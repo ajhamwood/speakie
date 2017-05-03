@@ -1,0 +1,410 @@
+<!doctype html>
+<html>
+<head>
+  <title>Speakie</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="keywords" content="voice commands">
+  <meta name="description" content="Mucking around with the Speech API.">
+  <link rel="shortcut icon" href="data:image/png;base64,">
+  <script src="speakie.js"></script>
+  <style>
+
+/* Background */
+html, body {
+  margin: 0;
+  height: 100vh
+}
+body {
+  display: grid;
+  grid-template-rows: 10rem calc(100% - 18.5rem) 7.5rem;
+  grid-gap: .5rem;
+  margin: 2rem;
+  overflow: hidden;
+  background: linear-gradient(230deg, #a24bcf, #4b79cf, #4bc5cf);
+  background-size: 400% 400%;
+  animation: BG 30s ease infinite
+}
+@keyframes BG {
+  from { background-position: 0% 50% }
+  50% { background-position: 100% 50% }
+  to { background-position: 0% 50% }
+}
+
+/* Menu */
+nav {
+  position: absolute;
+  right: 5px;
+  top: 5px;
+  cursor: pointer;
+  display: inline-flex;
+  flex-flow: row wrap;
+  justify-content: flex-end;
+  width: 8rem
+}
+nav > * {
+  border: 1px outset grey;
+  padding: .3rem .5rem;
+  background: white
+}
+#speakie-toggle {
+  border-radius: 5px 0 0 5px;
+  border-right: none
+}
+#menu {
+  border-radius: 0 5px 5px 0
+}
+nav :hover {
+  background: lightgrey
+}
+nav > #menu-options,
+nav #language-options {
+  display: none
+}
+#menu-options {
+  position: relative
+}
+#language-options {
+  position: absolute;
+  right: 100%;
+  top: 0;
+  background: white;
+  border: 1px outset grey
+}
+#language-options > * {
+  padding: .3rem .5rem
+}
+nav.active > #speakie-toggle {
+  border-bottom-left-radius: 0;
+  border-bottom: none
+}
+nav.active > #menu {
+  border-bottom-right-radius: 0;
+  border-bottom: none
+}
+nav.active > #menu-options {
+  display: block
+}
+#language::before {
+  content: "\25c4\a0";
+  visibility: hidden
+}
+#language.active::before {
+  visibility: visible
+}
+#language.active + #language-options {
+  display: block
+}
+#language-options > *::before {
+  content: "\273b\a0";
+  visibility: hidden
+}
+#language-options > .selected::before {
+  visibility: visible
+}
+
+/* Voice indicator */
+#speakie-indicator {
+  position: absolute;
+  bottom: 1rem;
+  margin: 0 calc(50% - 4rem);
+  width: 4rem;
+  overflow: visible;
+  display: none
+}
+#speakie-indicator.listening {
+  display: block
+}
+#speakie-indicator.active #indi-grad > :nth-child(1) {
+  stop-color: #fe4a49
+}
+#speakie-indicator.active #indi-grad > :nth-child(2) {
+  stop-color: rgba(254, 74, 73, 0)
+}
+#speakie-indicator #acti-fill {
+  display: none
+}
+#speakie-indicator.active #acti-fill {
+  display: inherit
+}
+
+/* Body */
+#utterances {
+  background: black;
+  padding: .7rem 3rem;
+  font-family: sans-serif;
+  line-height: 1.4rem;
+  color: #9cb9ed
+}
+#utterances > .understood {
+  margin-left: -1rem;
+  font-weight: bold
+}
+#content-wrapper {
+  background: black;
+  border-radius: 2rem;
+  color: #9cb9ed;
+  padding: 1rem
+}
+#content {
+  height: 100%;
+  overflow-y: auto
+}
+p {
+  margin: .3rem .5rem;
+}
+hr {
+  border: 0;
+  height: 1px;
+  background-image: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.75), transparent)
+}
+
+  </style>
+</head>
+<body>
+  <nav>
+    <div id="speakie-toggle">Start</div>
+    <div id="menu">&#9776;</div>
+    <div id="menu-options">
+      <div id="language">Language</div>
+      <div id="language-options">
+        <div data-lang="en">English</div>
+        <div data-lang="ja">Japanese</div>
+      </div>
+    </div>
+  </nav>
+  <svg id="speakie-indicator" viewBox="0 0 100 100">
+    <defs>
+      <radialGradient id="indi-grad">
+        <stop offset=".8" stop-color="black"/>
+        <stop offset="1" stop-color="transparent"/>
+      </radialGradient>
+      <radialGradient id="acti-grad">
+        <stop offset=".16" stop-color="#fe4a49"/>
+        <stop stop-color="transparent">
+          <animate attributeType="SVG" attributeName="offset"
+            from=".16" to="1" dur="2s" repeatCount="indefinite"/>
+        </stop>
+        <stop offset="1" stop-color="transparent"/>
+      </radialGradient>
+    </defs>
+    <circle id="acti-fill" fill="url(#acti-grad)" cx="50" cy="50" r="200"/>
+    <circle fill="url(#indi-grad)" cx="50" cy="50" r="40"/>
+  </svg>
+  <div id="utterances"></div>
+  <div id="content-wrapper">
+    <div id="content"></div>
+  </div>
+  <script>
+
+// Utilities
+
+//   $ enhances querySelectorAll
+//     @param {String} sel - CSS-style node selector
+//     @param {ParentNode} [node = document] - Optional selector root
+
+function $(sel, node) { return Array.prototype.slice.call( (node || document).querySelectorAll(sel) ) }
+
+
+//   $.addEvents enhances addEventListener
+//     @param {Object} obj
+//     - Takes the following form: { "selector": { "event1 event2": function listener () {} } }
+//     - A selector of "" targets both the window and document objects
+//     @param {ParentNode} [node = document] - Optional selector root
+
+$.addEvents = function (obj, node) {
+  for (var q in obj) for (var e in obj[q])
+    for (var ns = q ? $(q, node) : [window, document], es = e.split(" "), i = 0; i < es.length; i++)
+      typeof ns === "undefined" || ns.forEach(n => n.addEventListener(es[i], obj[q][e].bind(n)))
+}
+
+
+//   $.Drum interfaces indexedDB
+//   - Accessible through the $.drum object
+
+$.Drum = function () {
+  return new Promise(resolve => {
+    var req = indexedDB.open("speakie", 1);
+    req.onupgradeneeded = e => e.target.result.createObjectStore("settings").add({ language: "en" }, 1);
+    req.onsuccess = e => { this._db = e.target.result; resolve(this) }
+  })
+}
+
+$.Drum.prototype = {
+  get: function () {
+    var store = this._db.transaction(["settings"], "readwrite").objectStore("settings");
+    return new Promise(resolve => store.get(1).onsuccess = e => resolve(e.target.result))
+  },
+  set: function (content) {
+    var store = this._db.transaction(["settings"], "readwrite").objectStore("settings");
+    store.get(1).onsuccess = e => store.put(Object.assign(e.target.result, content), 1)
+  },
+  purge: function () { indexedDB.deleteDatabase("speakie") },
+  constructor: $.Drum
+};
+
+$.Drum.init = function () { return new $.Drum().then(d => $.drum = d) };
+
+
+// Initialisation
+
+var speakie, speakieStart, voicie, i18n, i18nCmnd;
+$.addEvents({
+  "": {
+    load: () => $.Drum.init().then(drum => drum.get()).then(settings => {
+      if (!["", "webkit", "moz", "ms", "o"].reduce((a, v) => a || window[v + "SpeechRecognition"], 0)) return false;
+      //TODO: handle more gracefully
+
+      function memo (text, node) {
+        var p = document.createElement("p");
+        p.appendChild(document.createTextNode(text.trim()));
+        node.appendChild(p);
+        node.scrollTop = node.scrollHeight - node.offsetHeight
+      }
+
+      // Speakie dialogue
+      speakie = new Speakie({lang: settings.language});
+      $(`#language-options > [data-lang=${speakie.lang}]`)[0].classList.add("selected");
+      speakie.voiceReady().then(() => voicie = new speakie.Voicie());
+      i18n = new speakie.I18n({
+        hello: { "en-US": "hello", "ja-JP": "こんにちは"},
+        goodbye: { "en-US": "goodbye", "ja-JP": "ありがとう" },
+        shutdown: { "en-US": "shutting down", "ja-JP": "さようなら"},
+        currenttime: { "en-US": "Current time: ", "ja-JP": "今の時間："},
+        currentdate: { "en-US": "Current date: ", "ja-JP": "今日の日付："}
+      });
+
+      // Speakie commands
+      var commands = {
+        goodbye: () => {
+          voicie.say(i18n.goodbye);
+          speakie.abort();
+          speakieStart.start();
+          $("#content")[0].style.display = $("#content")[0].style.display ? "" : "block"
+        },
+        shutdown: () => {
+          voicie.say(i18n.shutdown);
+          $("#speakie-toggle")[0].textContent = "Start";
+          speakie.abort();
+          $("#content")[0].style.display = $("#content")[0].style.display ? "" : "block"
+        },
+        memo: r => memo(r[0], $("#content")[0]),
+        hr: () => $("#content")[0].appendChild(document.createElement("hr")),
+        clear: () => $("#content")[0].childNodes.forEach(x => x.remove()),
+        remove: r => {
+          let con = $("#content")[0];
+          if (typeof r == "undefined") con.lastChild.remove();
+          else if (!isNaN(r = parseInt(r))) while (r-- && con.childNodes.length) con.lastChild.remove()
+        },
+        say: r => voicie.say(r[0]),
+        time: () => {
+          let t = new Intl.DateTimeFormat(speakie.lang, {hour: "numeric", minute: "numeric", hour12: true}).format(new Date());
+          voicie.say(t);
+          memo(i18n.currenttime.text + t, $("#content")[0])
+        },
+        date: () => {
+          let d = new Intl.DateTimeFormat(speakie.lang, {weekday: "long", day: "numeric", month: "short", year: "numeric"})
+          　　.format(new Date());
+          voicie.say(d);
+          memo(i18n.currentdate.text + d, $("#content")[0])
+        }
+      };
+      i18nCmnd = new speakie.I18n({
+        goodbye: { "en-US": "speaky goodbye", "ja-JP": "休憩" },
+        shutdown: { "en-US": "speaky shut down", "ja-JP": "終了" },
+        memo: { "en-US": "write *stuff", "ja-JP": /^(.*)\u3092\u66f8\u3044\u3066$/i },
+        hr: { "en-US": "rule off", "ja-JP": "区切って" },
+        clear: { "en-US": "clear (page) (all)", "ja-JP": "全部(を)消して" },
+        remove: { "en-US": "remove (last :num)", "ja-JP": "最後の:numを消して" },
+        say: { "en-US": "say *stuff", "ja-JP": /^(.*)\u3092\u8a00\u3063\u3066$/i },
+        time: { "en-US": "what's the time", "ja-JP": "今何時" },
+        date: { "en-US": "what's the date (today)", "ja-JP": "今日(何月)何日" }
+      });
+
+      // Speakie UI
+      for (let c in commands) speakie.learn(i18nCmnd[c], commands[c]);
+      speakie.on("start", () => $("#speakie-indicator")[0].classList.add("listening"));
+      speakie.on("end", () => $("#speakie-indicator")[0].classList.remove("listening"));
+      speakie.on("hear", utterList => {
+        $("#utterances > *").forEach(x => x.remove());
+        utterList.forEach(u => memo(u, $("#utterances")[0]))
+      });
+      speakie.on("hear-words", (u, _, list) => $("#utterances > *")[list.indexOf(u)].classList.add("understood"));
+      speakie.on("soundstart", () => {
+        $("#acti-grad animate")[0].beginElement();
+        $("#speakie-indicator")[0].classList.add("active")
+      });
+      speakie.on("soundend", () => $("#speakie-indicator")[0].classList.remove("active"));
+
+      // Speakie stand-by UI
+      speakieStart = new Speakie({lang: "en"});
+      speakieStart.learn(new speakieStart.I18nWord({en: "hey speaky"}), () => {
+        speakieStart.abort();
+        voicie.say(i18n.hello);
+        $("#speakie-toggle")[0].textContent = "Stop";
+        speakie.start()
+      });
+    })
+  },
+  "#speakie-toggle": {
+    click: function () {
+      if (speakieStart.active) {
+        speakieStart.abort();
+        this.textContent = "Start"
+      } else if (speakie && speakie.active) {
+        speakie.hear(i18nCmnd.shutdown);
+        this.textContent = "Start"
+      } else {
+        speakieStart.start();
+        this.textContent = "Stop"
+      }
+    }
+  },
+  "#menu": {
+    mouseenter: function () {
+      this.dataset.active = "";
+      $("nav")[0].classList.add("active")
+    },
+    mouseleave: function () {
+      this.removeAttribute("data-active")
+      setTimeout(() => "active" in this.dataset || $("nav")[0].classList.remove("active"), 200)
+    }
+  },
+  "#menu-options": {
+    mouseenter: function () { $("#menu")[0].dataset.active = "" },
+    mouseleave: function () {
+      $("#menu")[0].removeAttribute("data-active");
+      setTimeout(() => "active" in $("#menu")[0].dataset || $("nav")[0].classList.remove("active"), 200)
+    }
+  },
+  "#language": {
+    mouseenter: function () {
+      this.dataset.active = "";
+      this.classList.add("active")
+    },
+    mouseleave: function () {
+      this.removeAttribute("data-active")
+      setTimeout(() => "active" in this.dataset || this.classList.remove("active"), 200)
+    }
+  },
+  "#language-options": {
+    mouseenter: function () { $("#language")[0].dataset.active = "" },
+    mouseleave: function () {
+      $("#language")[0].removeAttribute("data-active");
+      setTimeout(() => "active" in $("#language")[0].dataset || $("#language")[0].classList.remove("active"), 200)
+    }
+  },
+  "#language-options > *": {
+    click: function () {
+      var lang = this.dataset.lang;
+      speakie.lang = lang;
+      $.drum.set({language: lang});
+      $("#language-options > .selected")[0].classList.remove("selected");
+      this.classList.add("selected")
+    }
+  }
+})
+
+  </script>
+</body>
+</html>
