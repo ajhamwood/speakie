@@ -104,7 +104,7 @@ nav.active > #menu-options {
 }
 
 /* Voice indicator */
-#speakie-indicator {
+svg {
   position: absolute;
   bottom: 1rem;
   margin: 0 calc(50% - 4rem);
@@ -112,19 +112,19 @@ nav.active > #menu-options {
   overflow: visible;
   display: none
 }
-#speakie-indicator.listening {
+svg.listening {
   display: block
 }
-#speakie-indicator.active #indi-grad > :nth-child(1) {
+svg.active #indicator-grad > :nth-child(1) {
   stop-color: #fe4a49
 }
-#speakie-indicator.active #indi-grad > :nth-child(2) {
+svg.active #indicator-grad > :nth-child(2) {
   stop-color: rgba(254, 74, 73, 0)
 }
-#speakie-indicator #acti-fill {
+svg #indicator-active {
   display: none
 }
-#speakie-indicator.active #acti-fill {
+svg.active #indicator-active {
   display: inherit
 }
 
@@ -173,23 +173,23 @@ hr {
       </div>
     </div>
   </nav>
-  <svg id="speakie-indicator" viewBox="0 0 100 100">
+  <svg viewBox="0 0 100 100">
     <defs>
-      <radialGradient id="indi-grad">
+    <radialGradient id="active-grad">
+      <stop offset=".16" stop-color="#fe4a49"/>
+      <stop stop-color="transparent">
+        <animate attributeType="SVG" attributeName="offset"
+          from=".16" to="1" dur="2s" repeatCount="indefinite"/>
+      </stop>
+      <stop offset="1" stop-color="transparent"/>
+    </radialGradient>
+      <radialGradient id="indicator-grad">
         <stop offset=".8" stop-color="black"/>
         <stop offset="1" stop-color="transparent"/>
       </radialGradient>
-      <radialGradient id="acti-grad">
-        <stop offset=".16" stop-color="#fe4a49"/>
-        <stop stop-color="transparent">
-          <animate attributeType="SVG" attributeName="offset"
-            from=".16" to="1" dur="2s" repeatCount="indefinite"/>
-        </stop>
-        <stop offset="1" stop-color="transparent"/>
-      </radialGradient>
     </defs>
-    <circle id="acti-fill" fill="url(#acti-grad)" cx="50" cy="50" r="200"/>
-    <circle fill="url(#indi-grad)" cx="50" cy="50" r="40"/>
+    <circle id="indicator-active" fill="url(#active-grad)" cx="50" cy="50" r="200"/>
+    <circle fill="url(#indicator-grad)" cx="50" cy="50" r="40"/>
   </svg>
   <div id="utterances"></div>
   <div id="content-wrapper">
@@ -323,18 +323,18 @@ $.addEvents({
 
       // Speakie UI
       for (let c in commands) speakie.learn(i18nCmnd[c], commands[c]);
-      speakie.on("start", () => $("#speakie-indicator")[0].classList.add("listening"));
-      speakie.on("end", () => $("#speakie-indicator")[0].classList.remove("listening"));
+      speakie.on("start", () => $("svg")[0].classList.add("listening"));
+      speakie.on("end", () => $("svg")[0].classList.remove("listening"));
       speakie.on("hear", utterList => {
         $("#utterances > *").forEach(x => x.remove());
         utterList.forEach(u => memo(u, $("#utterances")[0]))
       });
       speakie.on("hear-words", (u, _, list) => $("#utterances > *")[list.indexOf(u)].classList.add("understood"));
       speakie.on("soundstart", () => {
-        $("#acti-grad animate")[0].beginElement();
-        $("#speakie-indicator")[0].classList.add("active")
+        $("#active-grad animate")[0].beginElement();
+        $("svg")[0].classList.add("active")
       });
-      speakie.on("soundend", () => $("#speakie-indicator")[0].classList.remove("active"));
+      speakie.on("soundend", () => $("svg")[0].classList.remove("active"));
 
       // Speakie stand-by UI
       speakieStart = new Speakie({lang: "en"});
