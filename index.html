@@ -252,8 +252,9 @@ var speakie, speakieStart, voicie, i18n, i18nCmnd;
 $.addEvents({
   "": {
     load: () => $.Drum.init().then(drum => drum.get()).then(settings => {
-      if (!["", "webkit", "moz", "ms", "o"].reduce((a, v) => a || window[v + "SpeechRecognition"], 0)) return false;
       //TODO: handle more gracefully
+      if (!["", "webkit", "moz", "ms", "o"].reduce((a, v) => a || window[v + "SpeechRecognition"], 0)) return false;
+      var isMobile = ["Android", "CriOS"].find(x=>window.navigator.userAgent.match(x));
 
       function memo (text, node) {
         var p = document.createElement("p");
@@ -263,7 +264,7 @@ $.addEvents({
       }
 
       // Speakie dialogue
-      speakie = new Speakie({lang: settings.language});
+      speakie = new Speakie({lang: settings.language, continuous: isMobile});
       $(`#language-options > [data-lang=${speakie.lang}]`)[0].classList.add("selected");
       speakie.voiceReady().then(() => voicie = new speakie.Voicie());
       i18n = new speakie.I18n({
@@ -337,7 +338,7 @@ $.addEvents({
       speakie.on("soundend", () => $("svg")[0].classList.remove("active"));
 
       // Speakie stand-by UI
-      speakieStart = new Speakie({lang: "en"});
+      speakieStart = new Speakie({lang: "en", continuous: isMobile});
       speakieStart.learn(new speakieStart.I18nWord({en: "hey speaky"}), () => {
         speakieStart.abort();
         voicie.say(i18n.hello);
